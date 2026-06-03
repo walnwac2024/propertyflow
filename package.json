@@ -1,0 +1,17 @@
+{
+  "name": "propertyflow",
+  "version": "1.0.0",
+  "private": true,
+  "description": "PropertyFlow property management ERP",
+  "scripts": {
+    "install:all": "npm install --prefix server && npm install --prefix client",
+    "dev": "concurrently \"npm run dev --prefix server\" \"npm run dev --prefix client\"",
+    "server": "npm run dev --prefix server",
+    "client": "npm run dev --prefix client",
+    "migrate": "npm run migrate --prefix server",
+    "seed": "npm run seed --prefix server"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
