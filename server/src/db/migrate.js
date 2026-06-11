@@ -16,6 +16,16 @@ async function migrate() {
     await pool.query(`ALTER TABLE employee_payroll ADD COLUMN employee_id BIGINT UNSIGNED NULL AFTER project_id`);
     await pool.query(`ALTER TABLE employee_payroll ADD INDEX idx_employee_payroll_employee (employee_id)`);
   }
+  const [unitNameColumns] = await pool.query(`
+    SELECT COLUMN_NAME
+    FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'units'
+      AND COLUMN_NAME = 'unit_name'
+  `);
+  if (!unitNameColumns.length) {
+    await pool.query(`ALTER TABLE units ADD COLUMN unit_name VARCHAR(140) NULL AFTER unit_number`);
+  }
   console.log(`PropertyFlow migration complete: ${schema.length} tables checked/created.`);
 }
 

@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Edit3, Eye, Plus } from 'lucide-react';
+import { Edit3, Eye, Plus, Search } from 'lucide-react';
 import { api } from '../api.js';
 import { DataTable } from '../components/DataTable.jsx';
 import { PageHeader } from '../components/PageHeader.jsx';
@@ -24,11 +24,28 @@ export function Units() {
   const floors = useApi('/floors', { data: [] });
   const contacts = useApi('/contacts?limit=100', { data: [] });
   const units = useApi('/units?limit=100', { data: [] });
-  const [form, setForm] = useState({ floor_id: '', unit_number: '', unit_type: 'apartment', area_sqft: 0, owner_id: '', tenant_id: '', occupancy_status: 'vacant' });
+  const [form, setForm] = useState({ floor_id: '', unit_number: '', unit_name: '', unit_type: 'apartment', area_sqft: 0, owner_id: '', tenant_id: '', occupancy_status: 'vacant' });
   const [editingId, setEditingId] = useState(null);
   const [selectedUnit, setSelectedUnit] = useState(null);
+  const [search, setSearch] = useState('');
   const user = JSON.parse(localStorage.getItem('propertyflow_user') || '{}');
   const canManageUnits = ['super_admin', 'property_manager'].includes(user.role);
+  const filteredUnits = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    if (!term) return units.data.data;
+    return units.data.data.filter((unit) => [
+      unit.project_name,
+      unit.floor_number,
+      unit.unit_number,
+      unit.unit_name,
+      unit.unit_type,
+      unit.area_sqft,
+      unit.owner_name,
+      unit.tenant_name,
+      assignedTo(unit),
+      unit.occupancy_status
+    ].some((value) => String(value ?? '').toLowerCase().includes(term)));
+  }, [units.data.data, search]);
 
   useEffect(() => {
     if (location.state?.editUnit) {
@@ -44,7 +61,7 @@ export function Units() {
     } else {
       await api.post('/units', payload);
     }
-    setForm({ floor_id: '', unit_number: '', unit_type: 'apartment', area_sqft: 0, owner_id: '', tenant_id: '', occupancy_status: 'vacant' });
+    setForm({ floor_id: '', unit_number: '', unit_name: '', unit_type: 'apartment', area_sqft: 0, owner_id: '', tenant_id: '', occupancy_status: 'vacant' });
     setEditingId(null);
     units.reload();
   }
@@ -54,6 +71,7 @@ export function Units() {
     setForm({
       floor_id: unit.floor_id,
       unit_number: unit.unit_number,
+      unit_name: unit.unit_name || '',
       unit_type: unit.unit_type,
       area_sqft: unit.area_sqft || 0,
       owner_id: unit.owner_id || '',
@@ -77,6 +95,7 @@ export function Units() {
               {floors.data.data.map((floor) => <option value={floor.id} key={floor.id}>{floor.project_name} / {floor.floor_number}</option>)}
             </select>
             <input placeholder="Unit number" value={form.unit_number} onChange={(e) => setForm({ ...form, unit_number: e.target.value })} required />
+            <input placeholder="Unit name / shop-flat name" value={form.unit_name} onChange={(e) => setForm({ ...form, unit_name: e.target.value })} />
             <select value={form.unit_type} onChange={(e) => setForm({ ...form, unit_type: e.target.value })}>
               <option value="apartment">Apartment</option><option value="office">Office</option><option value="shop">Shop</option><option value="warehouse">Warehouse</option><option value="other">Other</option>
             </select>
@@ -88,27 +107,36 @@ export function Units() {
           </form>
         </section>
       )}
-      <DataTable rows={units.data.data} columns={[
-        { key: 'project_name', label: 'Project' },
-        { key: 'floor_number', label: 'Floor' },
-        { key: 'unit_number', label: 'Unit' },
-        { key: 'unit_type', label: 'Type' },
-        { key: 'area_sqft', label: 'Area' },
-        { key: 'owner_name', label: 'Owner' },
-        { key: 'tenant_name', label: 'Tenant' },
-        { key: 'assigned_to', label: 'Assigned to', render: assignedTo },
-        { key: 'occupancy_status', label: 'Status', render: (row) => <span className={`pill ${row.occupancy_status}`}>{row.occupancy_status}</span> },
-        {
-          key: 'actions',
-          label: 'Actions',
-          render: (row) => (
-            <div className="row-actions">
-              <button className="mini-btn" onClick={() => setSelectedUnit(row)}><Eye size={14} />View</button>
-              {canManageUnits && <button className="mini-btn" onClick={() => editUnit(row)}><Edit3 size={14} />Edit</button>}
-            </div>
-          )
-        }
-      ]} />
+      <div className="no-print">
+        <div className="table-tools">
+          <label className="local-search">
+            <Search size={16} />
+            <input placeholder="Search units, floors, projects, owners, tenants, status" value={search} onChange={(event) => setSearch(event.target.value)} />
+          </label>
+        </div>
+        <DataTable rows={filteredUnits} columns={[
+          { key: 'project_name', label: 'Project' },
+          { key: 'floor_number', label: 'Floor' },
+          { key: 'unit_number', label: 'Unit' },
+          { key: 'unit_name', label: 'Unit Name', render: (row) => row.unit_name || '-' },
+          { key: 'unit_type', label: 'Type' },
+          { key: 'area_sqft', label: 'Area' },
+          { key: 'owner_name', label: 'Owner' },
+          { key: 'tenant_name', label: 'Tenant' },
+          { key: 'assigned_to', label: 'Assigned to', render: assignedTo },
+          { key: 'occupancy_status', label: 'Status', render: (row) => <span className={`pill ${row.occupancy_status}`}>{row.occupancy_status}</span> },
+          {
+            key: 'actions',
+            label: 'Actions',
+            render: (row) => (
+              <div className="row-actions">
+                <button className="mini-btn" onClick={() => setSelectedUnit(row)}><Eye size={14} />View</button>
+                {canManageUnits && <button className="mini-btn" onClick={() => editUnit(row)}><Edit3 size={14} />Edit</button>}
+              </div>
+            )
+          }
+        ]} />
+      </div>
       {selectedUnit && (
         <section className="panel detail-panel">
           <div className="section-title">
@@ -118,6 +146,7 @@ export function Units() {
           <div className="detail-grid">
             <div><span>Project</span><strong>{selectedUnit.project_name}</strong></div>
             <div><span>Floor</span><strong>{selectedUnit.floor_number}</strong></div>
+            <div><span>Unit Name</span><strong>{selectedUnit.unit_name || '-'}</strong></div>
             <div><span>Type</span><strong>{selectedUnit.unit_type}</strong></div>
             <div><span>Area</span><strong>{selectedUnit.area_sqft}</strong></div>
             <div><span>Owner</span><strong>{selectedUnit.owner_name || '-'}</strong></div>

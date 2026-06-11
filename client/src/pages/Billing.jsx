@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Calculator, Edit3, Eye, Layers3, Plus, Printer } from 'lucide-react';
+import { Calculator, Download, Edit3, Eye, Layers3, Plus, Printer } from 'lucide-react';
 import { api } from '../api.js';
 import { DataTable } from '../components/DataTable.jsx';
 import { PageHeader } from '../components/PageHeader.jsx';
@@ -37,6 +37,12 @@ function numberValue(value) {
   return Number(value || 0);
 }
 
+function addMonths(value, offset) {
+  const date = new Date(value || Date.now());
+  date.setMonth(date.getMonth() + offset);
+  return date;
+}
+
 function multiplierValue(value) {
   const next = Number(value);
   return next > 0 ? next : 1;
@@ -44,13 +50,13 @@ function multiplierValue(value) {
 
 function billStatusLabel(status) {
   if (status === 'draft') return 'Pending';
-  if (status === 'issued') return 'Approved';
+  if (status === 'issued') return 'Completed';
   return String(status || '-').replace('_', ' ');
 }
 
 function billStatusClass(status) {
   if (status === 'draft') return 'pending';
-  if (status === 'issued') return 'approved';
+  if (status === 'issued') return 'completed';
   return status || '';
 }
 
@@ -58,8 +64,102 @@ function Field({ label, children }) {
   return <label className="field">{label}{children}</label>;
 }
 
-function BillSlip({ bill }) {
+function csvCell(value) {
+  const text = String(value ?? '');
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function downloadBlob(filename, content, type) {
+  const blob = new Blob([content], { type });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
+const summaryHead = [
+  'Floor',
+  'Shop No',
+  'Shop/Flat Name',
+  'Meter No',
+  'Previous Reading',
+  'Present Reading',
+  'Unit Consumed',
+  'Tariff',
+  'Maintenance Charges',
+  'Bill Amount',
+  'Previous Arrears',
+  'Total Bill Amount',
+  'Received Amount',
+  'Balance R/A'
+];
+
+export function FloorSummaryPrint({ title, rows, totals }) {
+  return (
+    <section className="floor-summary-print">
+      <h1>{title}</h1>
+      <table>
+        <thead>
+          <tr>{summaryHead.map((head) => <th key={head}>{head}</th>)}</tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.id}>
+              <td>{row.floor}</td>
+              <td>{row.shopNo}</td>
+              <td>{row.name}</td>
+              <td>{row.meterNo}</td>
+              <td>{row.previousReading}</td>
+              <td>{row.presentReading}</td>
+              <td>{row.unitsConsumed}</td>
+              <td>{row.tariff}</td>
+              <td>{formatMoney(row.maintenanceCharges)}</td>
+              <td>{formatMoney(row.billAmount)}</td>
+              <td>{formatMoney(row.previousArrears)}</td>
+              <td>{formatMoney(row.totalBillAmount)}</td>
+              <td>{formatMoney(row.receivedAmount)}</td>
+              <td>{formatMoney(row.balance)}</td>
+            </tr>
+          ))}
+          <tr className="summary-total-row">
+            <th colSpan="8">Total</th>
+            <th>{formatMoney(totals.maintenanceCharges)}</th>
+            <th>{formatMoney(totals.billAmount)}</th>
+            <th>{formatMoney(totals.previousArrears)}</th>
+            <th>{formatMoney(totals.totalBillAmount)}</th>
+            <th>{formatMoney(totals.receivedAmount)}</th>
+            <th>{formatMoney(totals.balance)}</th>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  );
+}
+
+function billHistoryRows(bill) {
+  const historyByMonth = new Map((bill.history || []).map((item) => [
+    inputMonth(item.bill_month),
+    item
+  ]));
+  return Array.from({ length: 9 }, (_, index) => ({
+    monthDate: addMonths(bill.bill_month, index - 9)
+  })).map((row) => {
+    const key = row.monthDate.toISOString().slice(0, 7);
+    const item = historyByMonth.get(key);
+    return {
+      month: formatMonth(row.monthDate),
+      units: item?.units_consumed || '',
+      bill: item?.payable_within_due ? formatMoney(item.payable_within_due) : '',
+      payment: item?.paid_amount ? formatMoney(item.paid_amount) : ''
+    };
+  });
+}
+
+export function BillSlip({ bill }) {
   if (!bill) return null;
+  const displayName = bill.unit_name || bill.tenant_name || bill.owner_name || '-';
+  const historyRows = billHistoryRows(bill);
 
   return (
     <section className="bill-slip">
@@ -93,7 +193,7 @@ function BillSlip({ bill }) {
 
       <div className="slip-main">
         <div className="consumer-box">
-          <p><strong>NAME & ADDRESS</strong> <u>{bill.tenant_name || bill.owner_name || '-'}</u></p>
+          <p><strong>NAME & ADDRESS</strong> <u>{displayName}</u></p>
           <p><strong>ADDRESS:</strong> {bill.project_address || '-'} <strong>Floor</strong> {bill.floor_number} <strong>Unit No.</strong> {bill.unit_number}</p>
           <p>ELECTRICITY WILL DISCONTINUE AFTER 2 DAYS OF DUE DATE</p>
           <table>
@@ -112,21 +212,25 @@ function BillSlip({ bill }) {
             </tbody>
           </table>
         </div>
-        <div className="project-share-box">
+        <div className="month-history-box">
           <table>
-            <thead><tr><th>Project</th><th>Percentage</th><th>Payment</th></tr></thead>
+            <thead><tr><th>MONTH</th><th>UNITS</th><th>BILL</th><th>PAYMENT</th></tr></thead>
             <tbody>
-              <tr><td>{bill.project_name}</td><td></td><td></td></tr>
-              <tr><td>Common Area</td><td></td><td></td></tr>
-              <tr><td>Service</td><td></td><td></td></tr>
-              <tr><td>Maintenance</td><td></td><td></td></tr>
+              {historyRows.map((item) => (
+                <tr key={item.month}>
+                  <td>{item.month}</td>
+                  <td>{item.units}</td>
+                  <td>{item.bill}</td>
+                  <td>{item.payment}</td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
       </div>
 
       <div className="charges-grid">
-        <table>
+        <table className="electricity-charge-table">
           <thead><tr><th colSpan="2">ELECTRICITY CHARGES</th></tr></thead>
           <tbody>
             <tr><td>UNITS CONSUMED</td><td>{bill.units_consumed}</td></tr>
@@ -136,24 +240,44 @@ function BillSlip({ bill }) {
             <tr><td>Maintenance</td><td>{formatMoney(bill.maintenance_charges)}</td></tr>
             <tr><td>Service Charges</td><td>{formatMoney(bill.service_charges)}</td></tr>
             <tr><td>Wifi Charges</td><td>{formatMoney(bill.wifi_charges)}</td></tr>
-            <tr><td>Bill Adjustment</td><td>{formatMoney(bill.bill_adjustment)}</td></tr>
-            <tr><td>Installment</td><td>{formatMoney(bill.installment_amount)}</td></tr>
-            <tr><td>Subsidy</td><td>-{formatMoney(bill.subsidy_amount)}</td></tr>
+            <tr><td>T.R SURCHARGE</td><td>{formatMoney(bill.other_charges)}</td></tr>
             <tr><th>TOTAL</th><th>{formatMoney(bill.current_bill)}</th></tr>
+            <tr className="bill-calc-title"><th colSpan="2">BILL CALCULATION</th></tr>
+            <tr className="bill-calc-row">
+              <td colSpan="2">
+                <div className="bill-calc-formula">
+                  <span>Tariff</span>
+                  <span>X</span>
+                  <span>Units</span>
+                  <strong>{Number(bill.tariff || 0).toFixed(2)}</strong>
+                  <strong></strong>
+                  <strong>{bill.units_consumed}</strong>
+                </div>
+              </td>
+            </tr>
+            <tr className="bill-calc-spacer"><td></td><td></td></tr>
+            <tr className="bill-calc-spacer"><td></td><td></td></tr>
+            <tr className="bill-total-row"><th>TOTAL BILL</th><th>{formatMoney(bill.current_bill)}</th></tr>
           </tbody>
         </table>
-        <table>
-          <thead><tr><th colSpan="2">BILL CALCULATION</th></tr></thead>
+        <table className="other-charge-table">
+          <thead><tr><th colSpan="2">OTHER CHARGES</th></tr></thead>
           <tbody>
-            <tr><td>Tariff</td><td>{Number(bill.tariff || 0).toFixed(2)}</td></tr>
-            <tr><td>Units</td><td>{bill.units_consumed}</td></tr>
-            <tr><td>Tariff x Units</td><td>{formatMoney(bill.electricity_cost)}</td></tr>
-            <tr><td>Other Charges + Adjustments</td><td>{formatMoney(numberValue(bill.current_bill) - numberValue(bill.electricity_cost))}</td></tr>
-            <tr><td>Arrearage</td><td>{formatMoney(bill.previous_arrears)}</td></tr>
-            <tr><th>TOTAL BILL</th><th>{formatMoney(bill.payable_within_due)}</th></tr>
+            <tr><td>ABC</td><td>-</td></tr>
+            <tr><td></td><td></td></tr>
+            <tr><td></td><td></td></tr>
+            <tr><td>XYZ</td><td>-</td></tr>
+            <tr><td></td><td></td></tr>
+            <tr><td></td><td></td></tr>
+            <tr className="dashed-row"><td colSpan="2"></td></tr>
+            <tr><th>TOTAL OTHER CHARGES</th><th>{formatMoney(bill.other_charges)}</th></tr>
+            <tr><td></td><td></td></tr>
+            <tr><td></td><td></td></tr>
+            <tr><td></td><td></td></tr>
+            <tr><td></td><td></td></tr>
           </tbody>
         </table>
-        <table>
+        <table className="total-charge-table">
           <thead><tr><th colSpan="2">TOTAL CHARGES</th></tr></thead>
           <tbody>
             <tr><td>ARREARAGE</td><td>{formatMoney(bill.previous_arrears)}</td></tr>
@@ -172,7 +296,7 @@ function BillSlip({ bill }) {
       <h1>BUILDING MANAGEMENT SERVICES</h1>
       <div className="bill-subtitle">ELECTRICITY CONSUMER BILL</div>
       <div className="voucher-grid">
-        <div><strong>ADDRESS:</strong> {bill.project_name}</div>
+        <div><strong>ADDRESS:</strong> {displayName}</div>
         <div><strong>Floor</strong> {bill.floor_number}</div>
         <div><strong>Unit No.</strong> {bill.unit_number}</div>
         <div className="black">CONSUMER ID</div>
@@ -195,7 +319,8 @@ function BillSlip({ bill }) {
   );
 }
 
-export function Billing() {
+function BillingWorkspace({ view = 'billing' }) {
+  const isSummaryView = view === 'summary';
   const projects = useApi('/projects?limit=100', { data: [] });
   const units = useApi('/units?limit=100', { data: [] });
   const [month, setMonth] = useState(monthValue);
@@ -237,6 +362,9 @@ export function Billing() {
   const [selectedProject, setSelectedProject] = useState(null);
   const [selectedFloor, setSelectedFloor] = useState(null);
   const [selectedUnit, setSelectedUnit] = useState(null);
+  const [printingSummary, setPrintingSummary] = useState(false);
+  const [bulkMessage, setBulkMessage] = useState('');
+  const [bulkGenerating, setBulkGenerating] = useState(false);
   const projectFloors = useApi(selectedProject ? `/floors?project_id=${selectedProject.id}` : '/floors?project_id=-1', { data: [] });
 
   const filteredUnits = useMemo(() => {
@@ -261,6 +389,53 @@ export function Billing() {
     const payableAfterDue = form.payable_after_due === '' ? payableWithinDue + lpSurcharge : numberValue(form.payable_after_due);
     return { unitsConsumed, tariff, electricityCost, currentBill, effectiveArrears, payableWithinDue, lpSurcharge, payableAfterDue };
   }, [form, previousArrears]);
+
+  const floorSummaryRows = useMemo(() => {
+    if (!selectedFloor) return [];
+    return floorUnits.map((unit) => {
+      const bill = billForUnit(unit);
+      const billAmount = numberValue(bill?.current_bill);
+      const previousArrears = numberValue(bill?.previous_arrears);
+      const totalBillAmount = numberValue(bill?.payable_within_due);
+      const receivedAmount = numberValue(bill?.paid_amount);
+      return {
+        id: unit.id,
+        floor: unit.floor_number || selectedFloor.floor_number,
+        shopNo: unit.unit_number,
+        name: bill?.unit_name || unit.unit_name || bill?.tenant_name || bill?.owner_name || unit.tenant_name || unit.owner_name || '-',
+        meterNo: bill?.meter_no || '',
+        previousReading: bill?.previous_reading || '',
+        presentReading: bill?.present_reading || '',
+        unitsConsumed: bill?.units_consumed || '',
+        tariff: bill?.tariff ? Number(bill.tariff).toFixed(2) : '',
+        maintenanceCharges: numberValue(bill?.maintenance_charges),
+        billAmount,
+        previousArrears,
+        totalBillAmount,
+        receivedAmount,
+        balance: totalBillAmount - receivedAmount,
+        status: bill?.status || 'not_billed'
+      };
+    });
+  }, [floorUnits, electricityBills.data.data, selectedFloor]);
+
+  const floorSummaryTotals = useMemo(() => floorSummaryRows.reduce((sum, row) => ({
+    maintenanceCharges: sum.maintenanceCharges + row.maintenanceCharges,
+    billAmount: sum.billAmount + row.billAmount,
+    previousArrears: sum.previousArrears + row.previousArrears,
+    totalBillAmount: sum.totalBillAmount + row.totalBillAmount,
+    receivedAmount: sum.receivedAmount + row.receivedAmount,
+    balance: sum.balance + row.balance
+  }), {
+    maintenanceCharges: 0,
+    billAmount: 0,
+    previousArrears: 0,
+    totalBillAmount: 0,
+    receivedAmount: 0,
+    balance: 0
+  }), [floorSummaryRows]);
+
+  const floorSummaryTitle = `${selectedProject?.name || 'Project'} ${selectedFloor ? `Floor ${selectedFloor.floor_number}` : ''} Summary For the Month of ${formatMonth(`${month}-01`)}`;
 
   useEffect(() => {
     if (!form.unit_id || !form.bill_month) {
@@ -314,9 +489,130 @@ export function Billing() {
     }
   }
 
+  async function generateMonthBills() {
+    if (!selectedProject) {
+      setError('Select a project first.');
+      return;
+    }
+    setBulkGenerating(true);
+    setError('');
+    setBulkMessage('');
+    try {
+      const response = await api.post('/billing/electricity-bills/bulk-month', {
+        project_id: selectedProject.id,
+        floor_id: selectedFloor?.id || null,
+        bill_month: month
+      });
+      electricityBills.reload();
+      ledgerBills.reload();
+      setBulkMessage(`${response.data.created || 0} bills generated${response.data.skippedNoPrevious ? `, ${response.data.skippedNoPrevious} skipped` : ''}.`);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Unable to generate monthly bills');
+    } finally {
+      setBulkGenerating(false);
+    }
+  }
+
   async function printBill(row) {
     await viewBill(row);
     setTimeout(() => window.print(), 100);
+  }
+
+  function ensureFloorSelected() {
+    if (!selectedProject || !selectedFloor) {
+      setError('Select a project and floor first to export the monthly floor summary.');
+      return false;
+    }
+    setError('');
+    return true;
+  }
+
+  function printFloorSummary() {
+    if (!ensureFloorSelected()) return;
+    setSelectedBill(null);
+    setPrintingSummary(true);
+    setTimeout(() => {
+      window.print();
+      setTimeout(() => setPrintingSummary(false), 500);
+    }, 100);
+  }
+
+  async function downloadFloorSummaryPdf() {
+    if (!ensureFloorSelected()) return;
+    const { default: jsPDF } = await import('jspdf');
+    const { default: autoTable } = await import('jspdf-autotable');
+    const doc = new jsPDF({ orientation: 'landscape' });
+    doc.setFontSize(14);
+    doc.text(floorSummaryTitle, 14, 14);
+    autoTable(doc, {
+      startY: 20,
+      head: [summaryHead],
+      body: floorSummaryRows.map((row) => [
+        row.floor,
+        row.shopNo,
+        row.name,
+        row.meterNo,
+        row.previousReading,
+        row.presentReading,
+        row.unitsConsumed,
+        row.tariff,
+        formatMoney(row.maintenanceCharges),
+        formatMoney(row.billAmount),
+        formatMoney(row.previousArrears),
+        formatMoney(row.totalBillAmount),
+        formatMoney(row.receivedAmount),
+        formatMoney(row.balance)
+      ]),
+      foot: [[
+        'Total', '', '', '', '', '', '', '',
+        formatMoney(floorSummaryTotals.maintenanceCharges),
+        formatMoney(floorSummaryTotals.billAmount),
+        formatMoney(floorSummaryTotals.previousArrears),
+        formatMoney(floorSummaryTotals.totalBillAmount),
+        formatMoney(floorSummaryTotals.receivedAmount),
+        formatMoney(floorSummaryTotals.balance)
+      ]],
+      styles: { fontSize: 7, cellPadding: 1.4 },
+      headStyles: { fillColor: [45, 45, 45] },
+      footStyles: { fillColor: [235, 235, 235], textColor: [20, 20, 20], fontStyle: 'bold' },
+      margin: { left: 8, right: 8 }
+    });
+    doc.save(`${selectedProject.name}-${selectedFloor.floor_number}-${month}-summary.pdf`.replace(/\s+/g, '-'));
+  }
+
+  function downloadFloorSummaryCsv() {
+    if (!ensureFloorSelected()) return;
+    const lines = [
+      [floorSummaryTitle],
+      summaryHead,
+      ...floorSummaryRows.map((row) => [
+        row.floor,
+        row.shopNo,
+        row.name,
+        row.meterNo,
+        row.previousReading,
+        row.presentReading,
+        row.unitsConsumed,
+        row.tariff,
+        row.maintenanceCharges,
+        row.billAmount,
+        row.previousArrears,
+        row.totalBillAmount,
+        row.receivedAmount,
+        row.balance
+      ]),
+      [
+        'Total', '', '', '', '', '', '', '',
+        floorSummaryTotals.maintenanceCharges,
+        floorSummaryTotals.billAmount,
+        floorSummaryTotals.previousArrears,
+        floorSummaryTotals.totalBillAmount,
+        floorSummaryTotals.receivedAmount,
+        floorSummaryTotals.balance
+      ]
+    ];
+    const csv = lines.map((line) => line.map(csvCell).join(',')).join('\n');
+    downloadBlob(`${selectedProject.name}-${selectedFloor.floor_number}-${month}-summary.csv`.replace(/\s+/g, '-'), csv, 'text/csv;charset=utf-8');
   }
 
   function billForUnit(unit) {
@@ -395,12 +691,12 @@ export function Billing() {
   return (
     <>
       <PageHeader
-        title="Electricity Billing"
-        subtitle="Generate monthly unit bills, calculate tariff, carry arrears, and print consumer slips."
-        action={<button className="secondary" onClick={() => window.print()}><Printer size={16} />Print Slip</button>}
+        title={isSummaryView ? 'Billing Summary' : 'Electricity Billing'}
+        subtitle={isSummaryView ? 'Browse project and floor billing totals, print floor summaries, and export monthly data.' : 'Generate monthly unit bills, calculate tariff, carry arrears, and print consumer slips.'}
+        action={!isSummaryView && <button className="secondary" onClick={() => window.print()}><Printer size={16} />Print Slip</button>}
       />
 
-      <section className="panel">
+      {!isSummaryView && <section className="panel">
         <div className="section-title">
           <h2><Calculator size={18} />Monthly electricity bill</h2>
           <label className="month-filter">Month <input type="month" value={month} onChange={(e) => updateMonth(e.target.value)} /></label>
@@ -531,13 +827,20 @@ export function Billing() {
           <span>L.P. surcharge: <strong>{formatMoney(preview.lpSurcharge)}</strong></span>
           <span>Payable after due: <strong>{formatMoney(preview.payableAfterDue)}</strong></span>
         </div>
-      </section>
+      </section>}
 
-      <section className="panel no-print">
+      {isSummaryView && <section className="panel no-print">
         <div className="section-title">
           <h2><Layers3 size={18} />Billing by project and floor</h2>
-          <span className="pill">{month}</span>
+          <div className="actions">
+            <label className="month-filter">Month <input type="month" value={month} onChange={(e) => updateMonth(e.target.value)} /></label>
+            <button className="secondary" type="button" onClick={generateMonthBills} disabled={!selectedProject || bulkGenerating}><Plus size={16} />Generate month</button>
+            <button className="secondary" type="button" onClick={printFloorSummary} disabled={!selectedFloor}><Printer size={16} />Print floor</button>
+            <button className="secondary" type="button" onClick={downloadFloorSummaryPdf} disabled={!selectedFloor}><Download size={16} />PDF</button>
+            <button className="secondary" type="button" onClick={downloadFloorSummaryCsv} disabled={!selectedFloor}><Download size={16} />CSV</button>
+          </div>
         </div>
+        {bulkMessage && <div className="success-message">{bulkMessage}</div>}
         <div className="billing-browser">
           <div className="browser-column">
             <h3>Projects</h3>
@@ -575,10 +878,10 @@ export function Billing() {
                     const bill = billForUnit(row);
                     return (
                       <div className="row-actions">
-                        {bill
+                        {!isSummaryView && (bill
                           ? <button className="mini-btn" onClick={() => loadBillForEdit(bill)}><Edit3 size={14} />Edit bill</button>
-                          : <button className="mini-btn" onClick={() => loadUnitForBill(row)}><Plus size={14} />Create bill</button>}
-                        {bill?.status === 'draft' && <button className="mini-btn" onClick={() => changeBillStatus(bill.bill_id, 'approved')}>Approve</button>}
+                          : <button className="mini-btn" onClick={() => loadUnitForBill(row)}><Plus size={14} />Create bill</button>)}
+                        {bill?.status === 'draft' && <button className="mini-btn" onClick={() => changeBillStatus(bill.bill_id, 'approved')}>Complete</button>}
                         {bill?.status === 'issued' && <button className="mini-btn" onClick={() => changeBillStatus(bill.bill_id, 'pending')}>Pending</button>}
                         {bill && <button className="mini-btn" onClick={() => printBill(bill)}><Printer size={14} />Print slip</button>}
                         {bill && <button className="mini-btn" onClick={() => viewBill(bill)}><Eye size={14} />View</button>}
@@ -590,9 +893,9 @@ export function Billing() {
             ) : <div className="empty-state compact">Select a floor to view units.</div>}
           </div>
         </div>
-      </section>
+      </section>}
 
-      <section className="panel">
+      {isSummaryView && <section className="panel">
         <div className="section-title">
           <h2>Summary for {month}</h2>
           <span className="pill">{electricityBills.data.data.length} bills</span>
@@ -600,7 +903,7 @@ export function Billing() {
         <DataTable rows={electricityBills.data.data} columns={[
           { key: 'floor_number', label: 'Floor' },
           { key: 'unit_number', label: 'Shop No' },
-          { key: 'tenant_name', label: 'Shop/Flat Name', render: (row) => row.tenant_name || row.owner_name || '-' },
+          { key: 'tenant_name', label: 'Shop/Flat Name', render: (row) => row.unit_name || row.tenant_name || row.owner_name || '-' },
           { key: 'meter_no', label: 'Meter No' },
           { key: 'previous_reading', label: 'Previous Reading' },
           { key: 'present_reading', label: 'Present Reading' },
@@ -620,13 +923,13 @@ export function Billing() {
             render: (row) => (
               <div className="row-actions">
                 <button className="mini-btn" onClick={() => viewBill(row)}><Eye size={14} />Slip</button>
-                {row.status === 'draft' && <button className="mini-btn" onClick={() => changeBillStatus(row.bill_id, 'approved')}>Approve</button>}
+                {row.status === 'draft' && <button className="mini-btn" onClick={() => changeBillStatus(row.bill_id, 'approved')}>Complete</button>}
                 {row.status === 'issued' && <button className="mini-btn" onClick={() => changeBillStatus(row.bill_id, 'pending')}>Pending</button>}
               </div>
             )
           }
         ]} />
-      </section>
+      </section>}
 
       {selectedBill && (
         <div className="print-area">
@@ -634,7 +937,13 @@ export function Billing() {
         </div>
       )}
 
-      <section className="panel no-print">
+      {printingSummary && (
+        <div className="print-area">
+          <FloorSummaryPrint title={floorSummaryTitle} rows={floorSummaryRows} totals={floorSummaryTotals} />
+        </div>
+      )}
+
+      {!isSummaryView && <section className="panel no-print">
         <div className="section-title">
           <h2>Billing ledger</h2>
           <span className="pill">{ledgerBills.data.data.length} records</span>
@@ -652,13 +961,21 @@ export function Billing() {
             label: 'Actions',
             render: (row) => (
               <div className="row-actions">
-                {row.status === 'draft' && <button className="mini-btn" onClick={() => changeBillStatus(row.id, 'approved')}>Approve</button>}
+                {row.status === 'draft' && <button className="mini-btn" onClick={() => changeBillStatus(row.id, 'approved')}>Complete</button>}
                 {row.status === 'issued' && <button className="mini-btn" onClick={() => changeBillStatus(row.id, 'pending')}>Pending</button>}
               </div>
             )
           }
         ]} />
-      </section>
+      </section>}
     </>
   );
+}
+
+export function Billing() {
+  return <BillingWorkspace view="billing" />;
+}
+
+export function BillingSummary() {
+  return <BillingWorkspace view="summary" />;
 }

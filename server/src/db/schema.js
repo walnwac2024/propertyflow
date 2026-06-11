@@ -88,6 +88,7 @@ export const schema = [
     floor_id BIGINT UNSIGNED NOT NULL,
     project_id BIGINT UNSIGNED NOT NULL,
     unit_number VARCHAR(80) NOT NULL,
+    unit_name VARCHAR(140) NULL,
     unit_type ENUM('apartment','office','shop','warehouse','other') NOT NULL,
     custom_type VARCHAR(80) NULL,
     area_sqft DECIMAL(12,2) NOT NULL DEFAULT 0,

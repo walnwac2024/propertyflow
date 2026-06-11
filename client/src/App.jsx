@@ -11,10 +11,12 @@ import {
   Home,
   Layers3,
   LogOut,
+  Menu,
   Receipt,
   Search,
   ShieldCheck,
-  Users
+  Users,
+  X
 } from 'lucide-react';
 import { api } from './api.js';
 import { Dashboard } from './pages/Dashboard.jsx';
@@ -24,7 +26,7 @@ import { FloorUnits } from './pages/FloorUnits.jsx';
 import { Floors } from './pages/Floors.jsx';
 import { Units } from './pages/Units.jsx';
 import { Contacts } from './pages/Contacts.jsx';
-import { Billing } from './pages/Billing.jsx';
+import { Billing, BillingSummary } from './pages/Billing.jsx';
 import { Expenses } from './pages/Expenses.jsx';
 import { Employees } from './pages/Employees.jsx';
 import { Reports } from './pages/Reports.jsx';
@@ -38,6 +40,7 @@ const nav = [
   { to: '/units', label: 'Units', icon: DoorOpen },
   { to: '/contacts', label: 'People', icon: Users },
   { to: '/billing', label: 'Billing', icon: Receipt },
+  { to: '/billing-summary', label: 'Billing Summary', icon: Layers3, sub: true },
   { to: '/expenses', label: 'Expenses', icon: BadgeDollarSign },
   { to: '/employees', label: 'Employees', icon: HandCoins, roles: ['super_admin'] },
   { to: '/reports', label: 'Reports', icon: FileBarChart },
@@ -94,6 +97,7 @@ function Login() {
 function Shell() {
   const navigate = useNavigate();
   const user = useMemo(() => JSON.parse(localStorage.getItem('propertyflow_user') || '{}'), []);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   function logout() {
     localStorage.removeItem('propertyflow_token');
@@ -103,20 +107,33 @@ function Shell() {
 
   return (
     <div className="app-shell">
-      <aside className="sidebar">
-        <div className="logo"><Building2 size={24} /><span>PropertyFlow</span></div>
+      <aside className={`sidebar ${mobileMenuOpen ? 'open' : ''}`}>
+        <div className="sidebar-head">
+          <div className="logo"><Building2 size={24} /><span>PropertyFlow</span></div>
+          <button
+            className="mobile-menu-btn"
+            type="button"
+            onClick={() => setMobileMenuOpen((open) => !open)}
+            aria-expanded={mobileMenuOpen}
+            aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}
+          >
+            {mobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
+          </button>
+        </div>
         <nav>
           {nav.filter((item) => !item.roles || item.roles.includes(user.role)).map((item) => {
             const Icon = item.icon;
-            return <a href={item.to} key={item.to}><Icon size={18} />{item.label}</a>;
+            return <a href={item.to} className={item.sub ? 'sub-nav' : ''} key={item.to} onClick={() => setMobileMenuOpen(false)}><Icon size={18} />{item.label}</a>;
           })}
         </nav>
       </aside>
       <section className="workspace">
         <header className="topbar">
           <div className="search-box"><Search size={17} /><input placeholder="Search projects, units, tenants" /></div>
+          <div className="topbar-actions">
           <div className="user-chip"><span>{user.name || 'Admin'}</span><small>{(user.role || '').replace('_', ' ')}</small></div>
           <button className="icon-btn" onClick={logout} title="Log out"><LogOut size={18} /></button>
+          </div>
         </header>
         <main className="content">
           <Routes>
@@ -128,6 +145,7 @@ function Shell() {
             <Route path="/units" element={<Units />} />
             <Route path="/contacts" element={<Contacts />} />
             <Route path="/billing" element={<Billing />} />
+            <Route path="/billing-summary" element={<BillingSummary />} />
             <Route path="/expenses" element={<Expenses />} />
             <Route path="/employees" element={<Employees />} />
             <Route path="/reports" element={<Reports />} />

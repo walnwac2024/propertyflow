@@ -80,11 +80,14 @@ input:focus, select:focus { outline: 2px solid rgba(31, 138, 112, 0.25); border-
 .secondary { background: #e7eee9; color: #1d4f43; padding: 0 16px; font-weight: 800; }
 .icon-btn { width: 42px; background: #ffffff; border: 1px solid #d9e1dc; color: #39463f; }
 .error { padding: 10px 12px; border-radius: 8px; background: #fff1ef; color: #a33225; }
+.success-message { padding: 10px 12px; border-radius: 8px; background: #edf8f2; color: #126149; font-weight: 800; margin-bottom: 12px; }
 .form-error { margin-top: 12px; }
 
 .app-shell { min-height: 100vh; display: grid; grid-template-columns: 260px 1fr; }
 .sidebar { background: #152b26; color: #edf6f1; padding: 22px 16px; position: sticky; top: 0; height: 100vh; }
+.sidebar-head { display: block; }
 .logo { display: flex; align-items: center; gap: 10px; font-size: 20px; font-weight: 900; margin: 6px 8px 28px; }
+.mobile-menu-btn { display: none; }
 .sidebar nav { display: grid; gap: 4px; }
 .sidebar a {
   height: 42px;
@@ -96,12 +99,22 @@ input:focus, select:focus { outline: 2px solid rgba(31, 138, 112, 0.25); border-
   gap: 10px;
 }
 .sidebar a:hover { background: #214139; color: #ffffff; }
+.sidebar a.sub-nav {
+  height: 38px;
+  margin-left: 14px;
+  padding-left: 16px;
+  font-size: 14px;
+  color: #d8e5df;
+  border-left: 1px solid rgba(216, 229, 223, 0.22);
+}
+.sidebar a.sub-nav svg { width: 16px; height: 16px; }
 
 .workspace { min-width: 0; }
 .topbar {
   height: 72px;
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 14px;
   padding: 0 28px;
   border-bottom: 1px solid #dfe5e1;
@@ -110,6 +123,11 @@ input:focus, select:focus { outline: 2px solid rgba(31, 138, 112, 0.25); border-
   top: 0;
   z-index: 5;
   backdrop-filter: blur(12px);
+}
+.topbar-actions{
+  display: flex;
+  align-items: center;
+  gap: 14px;
 }
 .search-box {
   flex: 1;
@@ -159,7 +177,7 @@ input:focus, select:focus { outline: 2px solid rgba(31, 138, 112, 0.25); border-
 .inline-form { display: grid; grid-template-columns: repeat(5, minmax(140px, 1fr)) auto; gap: 10px; align-items: center; }
 .inline-form.project-form { grid-template-columns: 1.1fr 1.1fr 1.1fr 0.8fr 0.9fr auto; }
 .inline-form.floor-form { grid-template-columns: minmax(180px, 0.9fr) minmax(180px, 1fr) minmax(220px, 1.5fr) auto; align-items: end; }
-.inline-form.unit-form { grid-template-columns: repeat(7, minmax(120px, 1fr)) auto; }
+.inline-form.unit-form { grid-template-columns: repeat(8, minmax(120px, 1fr)) auto; }
 .inline-form.floor-unit-form { grid-template-columns: repeat(4, minmax(170px, 1fr)); align-items: end; }
 .inline-form.user-form { grid-template-columns: repeat(6, minmax(130px, 1fr)) auto; }
 .inline-form.employee-form { grid-template-columns: repeat(5, minmax(150px, 1fr)) auto; align-items: end; }
@@ -215,6 +233,31 @@ input:focus, select:focus { outline: 2px solid rgba(31, 138, 112, 0.25); border-
   min-width: 148px;
 }
 .row-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.table-tools {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 10px;
+}
+.local-search {
+  width: min(420px, 100%);
+  height: 42px;
+  display: flex;
+  align-items: center;
+  grid-template-columns: none;
+  gap: 8px;
+  border: 1px solid #d9e1dc;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #66716b;
+  padding: 0 12px;
+}
+.local-search input {
+  width: 100%;
+  height: auto;
+  border: 0;
+  padding: 0;
+}
+.local-search input:focus { outline: 0; }
 .mini-btn {
   height: 32px;
   border: 1px solid #d9e1dc;
@@ -315,6 +358,7 @@ input:focus, select:focus { outline: 2px solid rgba(31, 138, 112, 0.25); border-
 }
 .empty-state.compact { padding: 16px; }
 .print-area { display: grid; place-items: start center; }
+.print-stack { gap: 18px; }
 .bill-slip {
   width: min(980px, 100%);
   background: #ffffff;
@@ -372,7 +416,24 @@ input:focus, select:focus { outline: 2px solid rgba(31, 138, 112, 0.25); border-
 .consumer-box { padding: 28px 4px 0; }
 .consumer-box p { margin: 0 0 10px; font-size: 16px; }
 .consumer-box strong { margin-right: 20px; }
-.project-share-box { background: #ffffff; border-left: 1px solid #111111; }
+.month-history-box {
+  background: #ffffff;
+  border-left: 1px solid #111111;
+}
+.month-history-box table {
+  height: 100%;
+}
+.month-history-box th {
+  height: 30px;
+  font-weight: 900;
+}
+.month-history-box td {
+  height: 28px;
+}
+.month-history-box td:first-child {
+  text-align: left;
+  padding-left: 20px;
+}
 .bill-slip table { width: 100%; min-width: 0; border-collapse: collapse; }
 .bill-slip th, .bill-slip td {
   border: 1px solid #111111;
@@ -391,6 +452,43 @@ input:focus, select:focus { outline: 2px solid rgba(31, 138, 112, 0.25); border-
 .charges-grid table td { height: 29px; }
 .charges-grid td:last-child,
 .charges-grid th:last-child { text-align: right; padding-right: 10px; }
+.bill-calc-title th,
+.bill-total-row th {
+  font-weight: 900;
+}
+.bill-calc-row td {
+  height: 92px;
+  padding: 0;
+  text-align: center !important;
+  vertical-align: middle;
+}
+.bill-calc-formula {
+  min-height: 82px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  align-content: center;
+  row-gap: 12px;
+}
+.bill-calc-formula span,
+.bill-calc-formula strong {
+  font-size: 13px;
+  font-weight: 500;
+  text-align: center;
+}
+.bill-calc-spacer td {
+  height: 34px;
+}
+.other-charge-table td {
+  height: 29px;
+}
+.other-charge-table .dashed-row td {
+  height: 24px;
+  border-top: 1px dashed #111111;
+}
+.other-charge-table th:last-child {
+  text-align: center;
+  padding-right: 5px;
+}
 .cut-line {
   height: 29px;
   display: flex;
@@ -414,6 +512,45 @@ input:focus, select:focus { outline: 2px solid rgba(31, 138, 112, 0.25); border-
   border-left: 1px solid #111111;
 }
 .voucher-grid .amount { justify-content: flex-end; padding-right: 10px; font-weight: 900; }
+.floor-summary-print {
+  width: 100%;
+  max-width: 1280px;
+  background: #ffffff;
+  color: #111111;
+  font-family: Arial, Helvetica, sans-serif;
+}
+.floor-summary-print h1 {
+  margin: 0 0 10px;
+  text-align: center;
+  font-size: 20px;
+  letter-spacing: 0;
+}
+.floor-summary-print table {
+  width: 100%;
+  min-width: 0;
+  border-collapse: collapse;
+}
+.floor-summary-print th,
+.floor-summary-print td {
+  border: 1px solid #111111;
+  padding: 5px 6px;
+  color: #111111;
+  font-size: 11px;
+  text-align: left;
+}
+.floor-summary-print th {
+  background: #333333;
+  color: #ffffff;
+  font-weight: 900;
+  text-transform: none;
+}
+.floor-summary-print td:nth-child(n+5),
+.floor-summary-print th:nth-child(n+5) { text-align: right; }
+.floor-summary-print .summary-total-row th {
+  background: #e8e8e8;
+  color: #111111;
+  font-weight: 900;
+}
 .no-print { display: block; }
 .table-wrap {
   overflow: auto;
@@ -438,7 +575,7 @@ td { color: #26312c; }
   font-size: 12px;
   font-weight: 800;
 }
-.pill.occupied, .pill.paid, .pill.approved, .pill.active { background: #ddf4ea; color: #126149; }
+.pill.occupied, .pill.paid, .pill.approved, .pill.completed, .pill.active { background: #ddf4ea; color: #126149; }
 .pill.vacant, .pill.pending { background: #fff4d7; color: #76530d; }
 .pill.issued { background: #ddf4ea; color: #126149; }
 .pill.overdue, .pill.rejected { background: #ffe4df; color: #963525; }
@@ -451,8 +588,45 @@ td { color: #26312c; }
   .login-shell { grid-template-columns: 1fr; }
   .login-visual { min-height: 320px; }
   .app-shell { grid-template-columns: 1fr; }
-  .sidebar { position: relative; height: auto; }
-  .sidebar nav { grid-template-columns: repeat(3, 1fr); }
+  .sidebar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    height: auto;
+    padding: 14px 20px;
+  }
+  .sidebar-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .logo { margin: 0; }
+  .mobile-menu-btn {
+    width: 42px;
+    height: 42px;
+    border: 1px solid rgba(237, 246, 241, 0.22);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.06);
+    color: #edf6f1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+  .sidebar nav {
+    display: none;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    margin-top: 14px;
+  }
+  .sidebar.open nav { display: grid; }
+  .sidebar a { height: 40px; }
+  .sidebar a.sub-nav {
+    margin-left: 0;
+    padding-left: 12px;
+    border-left: 0;
+  }
   .stat-grid, .split { grid-template-columns: 1fr; }
   .inline-form, .inline-form.project-form, .inline-form.floor-form, .inline-form.unit-form, .inline-form.floor-unit-form, .inline-form.employee-form, .inline-form.payroll-form, .inline-form.electricity-form, .section-fields { grid-template-columns: 1fr 1fr; }
   .detail-grid { grid-template-columns: 1fr 1fr; }
@@ -461,21 +635,30 @@ td { color: #26312c; }
 
 @media (max-width: 640px) {
   .login-panel, .login-visual, .content, .topbar { padding: 20px; }
-  .sidebar nav { grid-template-columns: 1fr 1fr; }
+  .sidebar nav { grid-template-columns: 1fr; }
   .page-header { display: grid; }
+  .table-tools { justify-content: stretch; }
+  .local-search { width: 100%; }
   .inline-form, .inline-form.project-form, .inline-form.floor-form, .inline-form.unit-form, .inline-form.floor-unit-form, .inline-form.user-form, .inline-form.employee-form, .inline-form.payroll-form, .inline-form.electricity-form, .section-fields { grid-template-columns: 1fr; }
   .detail-grid { grid-template-columns: 1fr; }
   .user-chip { display: none; }
 }
 
 @media print {
+  @page { size: landscape; margin: 8mm; }
   body { background: #ffffff; }
   .sidebar, .topbar, .page-header, .panel, .no-print { display: none !important; }
   .app-shell, .workspace, .content { display: block; padding: 0; margin: 0; }
   .print-area { display: block; }
   .bill-slip { width: 100%; border: 1px solid #111111; box-shadow: none; page-break-inside: avoid; }
+  .print-stack .bill-slip { page-break-after: always; }
+  .print-stack .bill-slip:last-child { page-break-after: auto; }
+  .floor-summary-print { max-width: none; }
+  .floor-summary-print h1 { font-size: 17px; }
+  .floor-summary-print th,
+  .floor-summary-print td { font-size: 9px; padding: 3px 4px; }
   .bill-slip h1 { color: #2d74ad; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
-  .black, .blue-cell, .bill-slip h1, .bill-subtitle {
+  .black, .blue-cell, .bill-slip h1, .bill-subtitle, .floor-summary-print th, .floor-summary-print .summary-total-row th {
     print-color-adjust: exact;
     -webkit-print-color-adjust: exact;
   }

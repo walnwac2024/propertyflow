@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Edit3, Eye, Plus } from 'lucide-react';
+import { Edit3, Eye, Plus, Search } from 'lucide-react';
 import { api } from '../api.js';
 import { DataTable } from '../components/DataTable.jsx';
 import { PageHeader } from '../components/PageHeader.jsx';
@@ -18,6 +18,23 @@ export function Projects() {
   const canManageProjects = ['super_admin', 'property_manager'].includes(user.role);
   const [form, setForm] = useState({ name: '', address: '', description: '', total_floors: '', status: 'active' });
   const [editingId, setEditingId] = useState(null);
+  const [search, setSearch] = useState('');
+  const filteredProjects = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    if (!term) return data.data;
+    return data.data.filter((project) => [
+      project.name,
+      project.address,
+      project.description,
+      project.status,
+      project.floor_count,
+      project.unit_count,
+      project.recovered_amount,
+      project.pending_amount,
+      project.expense_amount,
+      project.payroll_amount
+    ].some((value) => String(value ?? '').toLowerCase().includes(term)));
+  }, [data.data, search]);
 
   async function submit(event) {
     event.preventDefault();
@@ -111,7 +128,15 @@ export function Projects() {
           </form>
         </section>
       )}
-      <DataTable rows={data.data} columns={columns} />
+      <div className="no-print">
+        <div className="table-tools">
+          <label className="local-search">
+            <Search size={16} />
+            <input placeholder="Search projects, addresses, status, amounts" value={search} onChange={(event) => setSearch(event.target.value)} />
+          </label>
+        </div>
+        <DataTable rows={filteredProjects} columns={columns} />
+      </div>
     </>
   );
 }

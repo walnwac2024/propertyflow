@@ -64,8 +64,23 @@ const electricityBillSchema = z.object({
   payable_after_due: z.preprocess(optionalNumber, z.coerce.number().positive().optional().nullable())
 });
 
+const bulkElectricityBillSchema = z.object({
+  project_id: z.coerce.number().int().positive(),
+  floor_id: z.coerce.number().int().positive().optional().nullable(),
+  bill_month: z.string().min(7),
+  reading_date: z.string().min(10).optional(),
+  issue_date: z.string().min(10).optional(),
+  due_date: z.string().min(10).optional()
+});
+
 function monthDate(value) {
   return String(value).length === 7 ? `${value}-01` : value;
+}
+
+function addDays(value, days) {
+  const date = new Date(value);
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
 }
 
 function money(value) {
@@ -93,7 +108,7 @@ router.get('/electricity-bills', asyncHandler(async (req, res) => {
   const rows = await query(
     `SELECT eb.*, b.bill_no, b.paid_amount, b.status,
             p.name project_name, p.address project_address,
-            f.floor_number, u.unit_number, u.unit_type,
+            f.floor_number, u.unit_number, u.unit_name, u.unit_type,
             c.name tenant_name, c.address tenant_address,
             o.name owner_name
      FROM electricity_bills eb
@@ -142,11 +157,170 @@ router.get('/electricity-arrears', asyncHandler(async (req, res) => {
   res.json({ previous_arrears: previousArrears });
 }));
 
+router.post('/electricity-bills/bulk-month', authorize('super_admin', 'property_manager', 'accountant'), asyncHandler(async (req, res) => {
+  const body = bulkElectricityBillSchema.parse(req.body);
+  const billMonth = monthDate(body.bill_month);
+  const issueDate = body.issue_date || new Date().toISOString().slice(0, 10);
+  const readingDate = body.reading_date || issueDate;
+  const dueDate = body.due_date || addDays(issueDate, 4);
+
+  const result = await transaction(async (connection) => {
+    const [units] = await connection.execute(
+      `SELECT u.id, u.project_id, u.floor_id, u.tenant_id,
+              prev.consumer_id, prev.meter_no, prev.present_reading, prev.multiplier_factor,
+              prev.total_supply_payable, prev.total_supply_units, prev.tariff,
+              prev.water_charges, prev.lift_charges, prev.maintenance_charges, prev.service_charges,
+              prev.wifi_charges, prev.other_charges, prev.bill_adjustment, prev.installment_amount,
+              prev.subsidy_amount, prev.payable_within_due previous_payable, prev.lp_surcharge,
+              pb.paid_amount previous_paid
+       FROM units u
+       JOIN projects p ON p.id = u.project_id
+       LEFT JOIN electricity_bills existing ON existing.unit_id = u.id AND existing.bill_month = ?
+       LEFT JOIN electricity_bills prev ON prev.id = (
+         SELECT eb2.id
+         FROM electricity_bills eb2
+         WHERE eb2.unit_id = u.id AND eb2.bill_month < ?
+         ORDER BY eb2.bill_month DESC, eb2.id DESC
+         LIMIT 1
+       )
+       LEFT JOIN bills pb ON pb.id = prev.bill_id
+       WHERE u.project_id = ?
+         AND p.company_id = ?
+         AND (? IS NULL OR u.floor_id = ?)
+         AND u.status = 'active'
+         AND existing.id IS NULL
+       ORDER BY u.floor_id, u.unit_number`,
+      [billMonth, billMonth, body.project_id, req.user.company_id, body.floor_id || null, body.floor_id || null]
+    );
+
+    let created = 0;
+    let skippedNoPrevious = 0;
+
+    for (const unit of units) {
+      if (unit.present_reading === null || unit.present_reading === undefined) {
+        skippedNoPrevious += 1;
+        continue;
+      }
+
+      const previousReading = money(unit.present_reading);
+      const presentReading = previousReading;
+      const unitsConsumed = 0;
+      const electricityCost = 0;
+      const previousArrears = money(Math.max(0, Number(unit.previous_payable || 0) - Number(unit.previous_paid || 0)));
+      const currentBill = money(
+        Number(unit.water_charges || 0) +
+        Number(unit.lift_charges || 0) +
+        Number(unit.maintenance_charges || 0) +
+        Number(unit.service_charges || 0) +
+        Number(unit.wifi_charges || 0) +
+        Number(unit.other_charges || 0) +
+        Number(unit.bill_adjustment || 0) +
+        Number(unit.installment_amount || 0) -
+        Number(unit.subsidy_amount || 0)
+      );
+      const payableWithinDue = money(previousArrears + currentBill);
+      const lpSurcharge = money(unit.lp_surcharge || 0);
+      const payableAfterDue = money(payableWithinDue + lpSurcharge);
+      const billNo = `ELEC-${Date.now()}-${unit.id}`;
+
+      const [billInsert] = await connection.execute(
+        `INSERT INTO bills (company_id, project_id, unit_id, tenant_id, bill_no, bill_month, issue_date, due_date, subtotal, late_fee, total_amount, status, created_by, notes)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)`,
+        [
+          req.user.company_id,
+          unit.project_id,
+          unit.id,
+          unit.tenant_id || null,
+          billNo,
+          billMonth,
+          issueDate,
+          dueDate,
+          payableWithinDue,
+          lpSurcharge,
+          payableWithinDue,
+          req.user.id,
+          'Bulk monthly electricity bill'
+        ]
+      );
+
+      const itemRows = [
+        ['Water charges', unit.water_charges],
+        ['Lift charges', unit.lift_charges],
+        ['Maintenance charges', unit.maintenance_charges],
+        ['Service charges', unit.service_charges],
+        ['Wifi charges', unit.wifi_charges],
+        ['Other charges', unit.other_charges],
+        ['Bill adjustment', unit.bill_adjustment],
+        ['Installment', unit.installment_amount],
+        ['Subsidy', -Number(unit.subsidy_amount || 0)],
+        ['Previous arrears', previousArrears]
+      ].filter((item) => Number(item[1]) !== 0);
+
+      for (const [description, amount] of itemRows) {
+        await connection.execute(`INSERT INTO bill_items (bill_id, description, amount) VALUES (?, ?, ?)`, [billInsert.insertId, description, amount]);
+      }
+
+      await connection.execute(
+        `INSERT INTO electricity_bills (
+          bill_id, company_id, project_id, floor_id, unit_id, tenant_id, bill_month, reading_date, issue_date, due_date,
+          consumer_id, meter_no, previous_reading, present_reading, multiplier_factor, units_consumed,
+          total_supply_payable, total_supply_units, tariff, electricity_cost, water_charges, lift_charges,
+          maintenance_charges, service_charges, wifi_charges, other_charges, previous_arrears, bill_adjustment,
+          installment_amount, subsidy_amount, current_bill, payable_within_due, lp_surcharge, payable_after_due, created_by
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          billInsert.insertId,
+          req.user.company_id,
+          unit.project_id,
+          unit.floor_id,
+          unit.id,
+          unit.tenant_id || null,
+          billMonth,
+          readingDate,
+          issueDate,
+          dueDate,
+          unit.consumer_id || null,
+          unit.meter_no || null,
+          previousReading,
+          presentReading,
+          unit.multiplier_factor || 1,
+          unitsConsumed,
+          unit.total_supply_payable || 0,
+          unit.total_supply_units || 0,
+          unit.tariff || 0,
+          electricityCost,
+          unit.water_charges || 0,
+          unit.lift_charges || 0,
+          unit.maintenance_charges || 0,
+          unit.service_charges || 0,
+          unit.wifi_charges || 0,
+          unit.other_charges || 0,
+          previousArrears,
+          unit.bill_adjustment || 0,
+          unit.installment_amount || 0,
+          unit.subsidy_amount || 0,
+          currentBill,
+          payableWithinDue,
+          lpSurcharge,
+          payableAfterDue,
+          req.user.id
+        ]
+      );
+      created += 1;
+    }
+
+    return { created, skippedExisting: 0, skippedNoPrevious };
+  });
+
+  await audit(req, 'bulk_create', 'electricity_bills', body.project_id, { month: billMonth, ...result });
+  res.status(201).json(result);
+}));
+
 router.get('/electricity-bills/:id', asyncHandler(async (req, res) => {
   const rows = await query(
     `SELECT eb.*, b.bill_no, b.paid_amount, b.status,
             p.name project_name, p.address project_address,
-            f.floor_number, u.unit_number, u.unit_type,
+            f.floor_number, u.unit_number, u.unit_name, u.unit_type,
             c.name tenant_name, c.address tenant_address,
             o.name owner_name
      FROM electricity_bills eb
@@ -168,7 +342,22 @@ router.get('/electricity-bills/:id', asyncHandler(async (req, res) => {
     { ...scopedProjectParams(req), id: req.params.id }
   );
   if (!rows[0]) return res.status(404).json({ message: 'Electricity bill not found' });
-  res.json({ data: rows[0] });
+  const historyRows = await query(
+    `SELECT eb.id, eb.bill_month, eb.units_consumed, eb.payable_within_due, b.paid_amount
+     FROM electricity_bills eb
+     JOIN bills b ON b.id = eb.bill_id
+     WHERE eb.company_id = :companyId
+       AND eb.unit_id = :unitId
+       AND eb.bill_month < :billMonth
+     ORDER BY eb.bill_month DESC, eb.id DESC
+     LIMIT 9`,
+    {
+      companyId: req.user.company_id,
+      unitId: rows[0].unit_id,
+      billMonth: rows[0].bill_month
+    }
+  );
+  res.json({ data: { ...rows[0], history: historyRows.reverse() } });
 }));
 
 router.post('/electricity-bills', authorize('super_admin', 'property_manager', 'accountant'), asyncHandler(async (req, res) => {

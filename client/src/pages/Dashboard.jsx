@@ -26,8 +26,7 @@ export function Dashboard() {
     { label: 'Projects', value: data.totals.projects || 0, icon: Building2 },
     { label: 'Floors', value: data.totals.floors || 0, icon: Layers3 },
     { label: 'Units', value: data.totals.units || 0, icon: DoorOpen },
-    { label: 'Pending approval', value: data.totals.pendingBills || 0, icon: Receipt },
-    { label: 'Approved bills', value: data.totals.approvedBills || 0, icon: BadgeCheck },
+    { label: 'Pending bills', value: data.totals.pendingBills || 0, icon: Receipt },
     { label: 'Completed bills', value: data.totals.completedBills || 0, icon: CircleDollarSign }
   ];
   const financeStats = [

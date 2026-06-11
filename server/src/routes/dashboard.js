@@ -14,7 +14,7 @@ router.get('/', asyncHandler(async (req, res) => {
   const month = monthRange(req.query.month);
   const financeScope = { companyId, monthStart: month.start, monthEnd: month.next };
   const canViewCompanyFinance = req.user.role === 'super_admin';
-  const [projects, floors, units, occupancy, recovered, pendingAmount, expenseAmount, payrollAmount, pendingBills, approvedBills, completedBills, recent] = await Promise.all([
+  const [projects, floors, units, occupancy, recovered, pendingAmount, expenseAmount, payrollAmount, pendingBills, completedBills, recent] = await Promise.all([
     query(`SELECT COUNT(*) total FROM projects p WHERE p.company_id = :companyId AND ${projectAccessSql}`, scope),
     query(`SELECT COUNT(*) total FROM floors f JOIN projects p ON p.id = f.project_id WHERE p.company_id = :companyId AND ${projectAccessSql}`, scope),
     query(`SELECT COUNT(*) total FROM units u JOIN projects p ON p.id = u.project_id LEFT JOIN contacts o ON o.id = u.owner_id LEFT JOIN contacts t ON t.id = u.tenant_id WHERE p.company_id = :companyId AND ${unitAccessSql}`, scope),
@@ -32,8 +32,7 @@ router.get('/', asyncHandler(async (req, res) => {
       ? query(`SELECT COALESCE(SUM(amount),0) total FROM employee_payroll WHERE company_id = :companyId AND status = 'paid' AND payroll_month >= :monthStart AND payroll_month < :monthEnd`, financeScope)
       : Promise.resolve([{ total: 0 }]),
     query(`SELECT COUNT(*) total FROM bills b JOIN units u ON u.id = b.unit_id LEFT JOIN contacts o ON o.id = u.owner_id LEFT JOIN contacts t ON t.id = u.tenant_id WHERE b.company_id = :companyId AND ${unitAccessSql} AND b.status = 'draft' AND b.bill_month >= :monthStart AND b.bill_month < :monthEnd`, { ...scope, monthStart: month.start, monthEnd: month.next }),
-    query(`SELECT COUNT(*) total FROM bills b JOIN units u ON u.id = b.unit_id LEFT JOIN contacts o ON o.id = u.owner_id LEFT JOIN contacts t ON t.id = u.tenant_id WHERE b.company_id = :companyId AND ${unitAccessSql} AND b.status = 'issued' AND b.bill_month >= :monthStart AND b.bill_month < :monthEnd`, { ...scope, monthStart: month.start, monthEnd: month.next }),
-    query(`SELECT COUNT(*) total FROM bills b JOIN units u ON u.id = b.unit_id LEFT JOIN contacts o ON o.id = u.owner_id LEFT JOIN contacts t ON t.id = u.tenant_id WHERE b.company_id = :companyId AND ${unitAccessSql} AND b.status = 'paid' AND b.bill_month >= :monthStart AND b.bill_month < :monthEnd`, { ...scope, monthStart: month.start, monthEnd: month.next }),
+    query(`SELECT COUNT(*) total FROM bills b JOIN units u ON u.id = b.unit_id LEFT JOIN contacts o ON o.id = u.owner_id LEFT JOIN contacts t ON t.id = u.tenant_id WHERE b.company_id = :companyId AND ${unitAccessSql} AND b.status IN ('issued','paid') AND b.bill_month >= :monthStart AND b.bill_month < :monthEnd`, { ...scope, monthStart: month.start, monthEnd: month.next }),
     canViewCompanyFinance
       ? query(`(
           SELECT 'payment' type, receipt_no ref, amount, payment_date date_value, created_at FROM payments WHERE company_id = :companyId
@@ -70,7 +69,6 @@ router.get('/', asyncHandler(async (req, res) => {
       totalExpenseAmount: totalExpense,
       cashInHand: recoveredTotal - totalExpense,
       pendingBills: pendingBills[0].total,
-      approvedBills: approvedBills[0].total,
       completedBills: completedBills[0].total,
       month: month.label
     },

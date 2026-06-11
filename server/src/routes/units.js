@@ -13,6 +13,7 @@ router.use(authenticate);
 const unitSchema = z.object({
   floor_id: z.coerce.number().int().positive(),
   unit_number: z.string().min(1),
+  unit_name: z.string().optional().nullable(),
   unit_type: z.enum(['apartment', 'office', 'shop', 'warehouse', 'other']),
   custom_type: z.string().optional().nullable(),
   area_sqft: z.coerce.number().nonnegative().default(0),
@@ -40,7 +41,7 @@ router.get('/', asyncHandler(async (req, res) => {
        AND ${unitAccessSql}
        AND (:projectId = 0 OR u.project_id = :projectId)
        AND (:floorId = 0 OR u.floor_id = :floorId)
-       AND (:rawSearch = '' OR u.unit_number LIKE :search OR p.name LIKE :search)
+       AND (:rawSearch = '' OR u.unit_number LIKE :search OR u.unit_name LIKE :search OR p.name LIKE :search)
      ORDER BY p.name, f.floor_number, u.unit_number
      LIMIT :limit OFFSET :offset`,
     {
@@ -63,7 +64,7 @@ router.get('/', asyncHandler(async (req, res) => {
        AND ${unitAccessSql}
        AND (:projectId = 0 OR u.project_id = :projectId)
        AND (:floorId = 0 OR u.floor_id = :floorId)
-       AND (:rawSearch = '' OR u.unit_number LIKE :search OR p.name LIKE :search)`,
+       AND (:rawSearch = '' OR u.unit_number LIKE :search OR u.unit_name LIKE :search OR p.name LIKE :search)`,
     {
       ...scopedProjectParams(req),
       projectId: Number(req.query.project_id || 0),
@@ -89,12 +90,13 @@ router.post('/', authorize('super_admin', 'property_manager'), asyncHandler(asyn
     }
     const projectId = floorRows[0].project_id;
     const [insert] = await connection.execute(
-      `INSERT INTO units (floor_id, project_id, unit_number, unit_type, custom_type, area_sqft, owner_id, tenant_id, occupancy_status, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO units (floor_id, project_id, unit_number, unit_name, unit_type, custom_type, area_sqft, owner_id, tenant_id, occupancy_status, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         body.floor_id,
         projectId,
         body.unit_number,
+        body.unit_name || null,
         body.unit_type,
         body.custom_type || null,
         body.area_sqft,
@@ -138,11 +140,12 @@ router.put('/:id', authorize('super_admin', 'property_manager'), asyncHandler(as
       throw error;
     }
     await connection.execute(
-      `UPDATE units SET floor_id=?, project_id=?, unit_number=?, unit_type=?, custom_type=?, area_sqft=?, owner_id=?, tenant_id=?, occupancy_status=?, status=? WHERE id=?`,
+      `UPDATE units SET floor_id=?, project_id=?, unit_number=?, unit_name=?, unit_type=?, custom_type=?, area_sqft=?, owner_id=?, tenant_id=?, occupancy_status=?, status=? WHERE id=?`,
       [
         body.floor_id,
         floorRows[0].project_id,
         body.unit_number,
+        body.unit_name || null,
         body.unit_type,
         body.custom_type || null,
         body.area_sqft,
