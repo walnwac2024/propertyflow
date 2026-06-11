@@ -1,7 +1,11 @@
 import axios from 'axios';
 
+const defaultApiUrl = window.location.protocol === 'http:'
+  ? 'http://localhost:4000/api'
+  : 'https://api.proproperty.cloud/api';
+
 export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:4000/api'
+  baseURL: import.meta.env.VITE_API_URL || defaultApiUrl
 });
 
 api.interceptors.request.use((config) => {

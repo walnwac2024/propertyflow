@@ -3,11 +3,14 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const defaultJwtSecret = 'change-this-secret-before-production';
+const defaultClientOrigin = process.env.NODE_ENV === 'production'
+  ? 'https://proproperty.cloud'
+  : 'http://localhost:5173';
 
 export const env = {
   port: Number(process.env.PORT || 4000),
   nodeEnv: process.env.NODE_ENV || 'development',
-  clientOrigin: process.env.CLIENT_ORIGIN || 'http://localhost:5173',
+  clientOrigin: process.env.CLIENT_ORIGIN || defaultClientOrigin,
   db: {
     host: process.env.DB_HOST || 'localhost',
     port: Number(process.env.DB_PORT || 3306),
