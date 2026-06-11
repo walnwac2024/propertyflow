@@ -50,3 +50,11 @@ API: http://localhost:4000/api
 - Password: `Admin@12345`
 
 Change this password after first login in a real deployment.
+
+## VPS Security Notes
+
+- Set a strong `JWT_SECRET` in `server/.env` before running with `NODE_ENV=production`.
+- Change the default admin password immediately after deployment.
+- Use a dedicated MySQL user with privileges only for the `propertyflow` database; do not use root on a VPS.
+- Keep `server/uploads/` outside public web roots when possible, and only allow trusted users to upload documents.
+- Put the API behind HTTPS and set `CLIENT_ORIGIN` to the real frontend domain.
