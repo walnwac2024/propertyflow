@@ -1,11 +1,22 @@
 import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-dotenv.config();
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 const defaultJwtSecret = 'change-this-secret-before-production';
 const defaultClientOrigin = process.env.NODE_ENV === 'production'
   ? 'https://proproperty.cloud'
   : 'http://localhost:5173';
+
+function trustProxyValue() {
+  const value = process.env.TRUST_PROXY || (process.env.NODE_ENV === 'production' ? '1' : '0');
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  return Number(value);
+}
 
 export const env = {
   port: Number(process.env.PORT || 4000),
@@ -20,7 +31,8 @@ export const env = {
   },
   jwtSecret: process.env.JWT_SECRET || defaultJwtSecret,
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '8h',
-  uploadDir: process.env.UPLOAD_DIR || 'uploads'
+  uploadDir: process.env.UPLOAD_DIR || 'uploads',
+  trustProxy: trustProxyValue()
 };
 
 if (env.nodeEnv === 'production' && env.jwtSecret === defaultJwtSecret) {

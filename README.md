@@ -49,12 +49,14 @@ API: http://localhost:4000/api
 - Frontend API base URL: `client/src/api.js`
 - Optional frontend override: `client/.env` with `VITE_API_URL=...`
 - Backend allowed frontend origin: `server/.env` with `CLIENT_ORIGIN=...`
+- Backend proxy mode for nginx/PM2: `server/.env` with `TRUST_PROXY=1`
 
 Default behavior:
 
 - If the frontend is opened with `http://`, it uses `http://localhost:4000/api`.
 - If the frontend is opened with `https://`, it uses `https://api.proproperty.cloud/api`.
 - If the backend runs with `NODE_ENV=production`, its default `CLIENT_ORIGIN` is `https://proproperty.cloud`.
+- If the backend runs with `NODE_ENV=production`, `TRUST_PROXY` defaults to `1` so nginx forwarded IP headers work with rate limiting.
 
 ## Default Login
 

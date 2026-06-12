@@ -21,6 +21,7 @@ import { errorHandler, notFound } from './middleware/error.js';
 const app = express();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+app.set('trust proxy', env.trustProxy);
 app.use(helmet());
 app.use(cors({ origin: env.clientOrigin, credentials: true }));
 app.use(express.json({ limit: '1mb' }));
